@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +9,7 @@ using snapnow.DAOS;
 using snapnow.DAOS.MssqlDbImplementation;
 using snapnow.Data;
 using snapnow.Models;
+using snapnow.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 // Add logger
@@ -20,6 +22,8 @@ builder.Host.ConfigureLogging(logging =>
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddScoped<IRoleDao, RoleDaoMssqlDatabase>();
+builder.Services.AddScoped<IUserDao, UserDaoMssqlDatabase>();
+builder.Services.AddScoped<IUserService, UserServiceJwtCookie>();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
@@ -32,15 +36,18 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     options.Password.RequiredLength = 5;
     options.Password.RequireUppercase = true;
     options.User.RequireUniqueEmail = true;
-    
+
 }).AddRoles<IdentityRole>().AddEntityFrameworkStores<ApplicationDbContext>();
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opt =>
     {
         opt.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = false,
-            ValidateAudience = false,
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidAudience = builder.Configuration["AuthSettings:Audience"],
+            ValidIssuer = builder.Configuration["AuthSettings:Issuer"],
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["AuthSettings:Key"]))
@@ -54,6 +61,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 return Task.CompletedTask;
             }
         };
+    }).AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
+    {
+        options.ExpireTimeSpan = TimeSpan.FromDays(1);
     });
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle

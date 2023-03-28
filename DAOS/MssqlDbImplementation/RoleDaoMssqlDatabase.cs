@@ -14,7 +14,7 @@ public class RoleDaoMssqlDatabase : IRoleDao
         _roleManager = roleManager; 
     }
     
-    public async Task<DatabaseResponseModel<IdentityRole>> Add(IdentityRole item)
+    public async Task<DatabaseResponseModel<IdentityRole>> Add(IdentityRole item, string temp)
     {
         try
         {
