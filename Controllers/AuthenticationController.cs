@@ -30,13 +30,23 @@ public class AuthenticationController : ControllerBase
             detail: result.Errors != null ? String.Join("/n", result.Errors) : ""
         ); 
     }
-    
+
     [HttpPost("login")]
-    public IActionResult LoginUserRoute([FromForm]LoginUserModel userModel)
+    public async Task<IActionResult> LoginUserRoute([FromForm] LoginUserModel userModel)
     {
-        throw new NotImplementedException();
+        var response = await _userService.LoginUser(userModel, HttpContext);
+        if (response.IsSuccess)
+        {
+            return Ok(response);
+        }
+        
+        return Problem(
+            statusCode: response.StatusCode,
+            title: response.Message,
+            detail: response.Errors != null ? String.Join("/n", response.Errors) : ""
+        );
     }
-    
+
     [HttpPost("logout")]
     public IActionResult LogoutUserRoute()
     {

@@ -1,4 +1,10 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using Azure;
+using Azure.Core;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.IdentityModel.Tokens;
 using snapnow.DAOS;
 using snapnow.DTOS;
 using snapnow.ErrorHandling;
@@ -10,11 +16,13 @@ public class UserServiceJwtCookie : IUserService
 {
     private readonly IUserDao _userDao;
     private readonly RoleService _roleDao;
+    private readonly IConfiguration _configuration;
 
-    public UserServiceJwtCookie(IUserDao userDao, RoleService roleDao)
+    public UserServiceJwtCookie(IUserDao userDao, RoleService roleDao, IConfiguration configuration)
     {
         _userDao = userDao;
         _roleDao = roleDao;
+        _configuration = configuration;
     }
     
     public async Task<UserResponseModel> RegisterUser(RegisterUserModel userModel)
@@ -30,7 +38,7 @@ public class UserServiceJwtCookie : IUserService
             return userResponseModel;
         
         
-        if (phoneNumberAllreadyExists(ref userResponseModel, userModel.PhoneNumber))
+        if (phoneNumberAlreadyExists(ref userResponseModel, userModel.PhoneNumber))
             return userResponseModel;
         
 
@@ -42,28 +50,87 @@ public class UserServiceJwtCookie : IUserService
         };
         
         var result = await _userDao.Add(identityUser, userModel.Password);
-        if (userAddedToDb(ref userResponseModel, result))
+        if (!userAddedToDb(ref userResponseModel, result))
+            return userResponseModel;
+
+        var roleResponse = await _roleDao.GetBy(userModel.Role);
+        var defaultUser = roleResponse.Result?.FirstOrDefault();
+        if (defaultUser == null)
         {
-            var roleResult = await _roleDao.GetBy(userModel.Role);
-            var defaultRole = roleResult.Result?.FirstOrDefault();
-            if (defaultRole != null)
-            {
-                var addToRoleResult = await _userDao.AddUserToRole(identityUser, defaultRole.Name);
-                if (!addToRoleResult.IsSuccess)
-                    userAssignedToRole(ref userResponseModel, addToRoleResult);
-
-                return userResponseModel;
-            }
-            
+            userResponseModel.Message += " // User was not assigned to a role";
+            return userResponseModel;
         }
-
-        somethingWentWrong(ref userResponseModel, result);
+        
+        var addToRoleResponse = await _userDao.AddUserToRole(identityUser, defaultUser.Name);
+        userAssignedToRole(ref userResponseModel, addToRoleResponse);
         return userResponseModel;
     }
 
-    public UserResponseModel LoginUser(LoginUserModel userModel)
+    public async Task<UserResponseModel> LoginUser(LoginUserModel userModel, HttpContext context)
     {
-        throw new NotImplementedException();
+        var userResponse = await _userDao.GetBy(userModel.Email);
+        var user = userResponse.Result?.FirstOrDefault();
+        if (!userResponse.IsSuccess)
+        {
+            return new UserResponseModel
+            {
+                Message = userResponse.Message,
+                IsSuccess = userResponse.IsSuccess,
+                Errors = userResponse.Errors
+            };
+        }
+        
+        var checkPasswordResponse = await _userDao.CheckPassword(user, userModel.Password);
+        var correctPassword = checkPasswordResponse.IsSuccess;
+        if (!correctPassword)
+        {
+            return new UserResponseModel
+            {
+                Message = userResponse.Message,
+                IsSuccess = userResponse.IsSuccess,
+                Errors = userResponse.Errors
+            };
+        }
+
+        var claims = new[]
+        {
+            new Claim("Email", userModel.Email),
+            new Claim(ClaimTypes.NameIdentifier, user.Id)
+        };
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["AuthSettings:Key"]));
+
+        var token = new JwtSecurityToken(
+            issuer: _configuration["AuthSettings:Issuer"],
+            audience: _configuration["AuthSettings:Audience"],
+            claims: claims,
+            expires: DateTime.Now.AddDays(10),
+            signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256)
+        );
+
+        string tokenAsString = new JwtSecurityTokenHandler().WriteToken(token);
+        
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = true,
+            SameSite = SameSiteMode.Strict,
+            Expires = DateTimeOffset.UtcNow.AddDays(10),
+            IsEssential = true,
+            Secure = true
+        };
+        
+        // set cookie
+        context.Response.Cookies.Append("Token", tokenAsString, cookieOptions);
+        bool isCookieSet = context.Request.Cookies["Token"] != null;
+        return new UserResponseModel
+        {
+            Message = isCookieSet ? "Cookie was set." : "Cookie was not set.",
+            IsSuccess = isCookieSet,
+            Errors = new List<string>{isCookieSet ? "" : "Failed to append the cookie in the browser."},
+            StatusCode = isCookieSet ? 200 : 500,
+            ExpireDate = token.ValidTo,
+            Token = tokenAsString
+        };
     }
 
     public UserResponseModel Logout()
@@ -71,15 +138,25 @@ public class UserServiceJwtCookie : IUserService
         throw new NotImplementedException();
     }
 
-    private bool phoneNumberAllreadyExists(ref UserResponseModel userResponseModel, string phoneNumber)
+    private bool phoneNumberAlreadyExists(ref UserResponseModel userResponseModel, string phoneNumber)
     {
-        var isUniquePhoneNumberResponse = _userDao.CheckPhoneNumber(phoneNumber);
-        if (!isUniquePhoneNumberResponse.IsSuccess)
+        var databaseResponse = _userDao.CheckPhoneNumber(phoneNumber);
+        var isUniquePhoneNumber = databaseResponse.Result?.FirstOrDefault() == null;
+        if (!databaseResponse.IsSuccess)
         {
-            userResponseModel.Message = "Wrong input";
-            userResponseModel.IsSuccess = false;
-            userResponseModel.StatusCode = isUniquePhoneNumberResponse.StatusCode;
-            userResponseModel.Errors = isUniquePhoneNumberResponse.Errors;
+            userResponseModel.Message = databaseResponse.Message;
+            userResponseModel.IsSuccess = databaseResponse.IsSuccess;
+            userResponseModel.StatusCode = databaseResponse.StatusCode;
+            userResponseModel.Errors = databaseResponse.Errors;
+            return true;
+        }
+
+        if (!isUniquePhoneNumber)
+        {
+            userResponseModel.Message = "Phone number is already in use.";
+            userResponseModel.IsSuccess = isUniquePhoneNumber;
+            userResponseModel.StatusCode = databaseResponse.StatusCode;
+            userResponseModel.Errors = databaseResponse.Errors;
             return true;
         }
 
@@ -100,31 +177,43 @@ public class UserServiceJwtCookie : IUserService
         return false;
     }
 
-    private bool userAddedToDb(ref UserResponseModel userResponseModel, DatabaseResponseModel<ApplicationUser> result)
+    private bool userAddedToDb(ref UserResponseModel userResponseModel, DatabaseResponseModel<IdentityResult> databaseResponse)
     {
-        if (result.IsSuccess)
+        if (!databaseResponse.IsSuccess)
         {
-            userResponseModel.Message = "User created successfully";
-            userResponseModel.IsSuccess = true;
-            userResponseModel.StatusCode = result.StatusCode;
-            return true;
+            userResponseModel.Message = databaseResponse.Message;
+            userResponseModel.IsSuccess = databaseResponse.IsSuccess;
+            userResponseModel.StatusCode = databaseResponse.StatusCode;
+            return false;
         }
 
-        return false;
+        var userAddedToDb = databaseResponse.Result?.FirstOrDefault();
+        userResponseModel.Message = userAddedToDb.Succeeded ? "User added to db." : "User was not added to db.";
+        userResponseModel.IsSuccess = userAddedToDb.Succeeded;
+        userResponseModel.Errors = databaseResponse.Errors;
+        userResponseModel.StatusCode = databaseResponse.StatusCode;
+
+        return userAddedToDb.Succeeded;
     }
 
-    private void somethingWentWrong(ref UserResponseModel userResponseModel, DatabaseResponseModel<ApplicationUser> result)
+    private void userAssignedToRole(ref UserResponseModel userResponseModel, DatabaseResponseModel<IdentityResult> addToRoleResponse)
     {
-        userResponseModel.Message = "Something went wrong.";
-        userResponseModel.IsSuccess = false;
-        userResponseModel.Errors = result.Errors;
-        userResponseModel.StatusCode = result.StatusCode;
-    }
-
-    private void userAssignedToRole(ref UserResponseModel userResponseModel, DatabaseResponseModel<IdentityResult> addToRoleResult)
-    {
-        userResponseModel.Message = "User could not be assigned to a role.";
-        userResponseModel.Errors = addToRoleResult.Errors;
-        userResponseModel.StatusCode = 500;
+        if (!addToRoleResponse.IsSuccess)
+        {
+            userResponseModel.Message = addToRoleResponse.Message;
+            userResponseModel.IsSuccess = addToRoleResponse.IsSuccess;
+            userResponseModel.Errors = addToRoleResponse.Errors;
+            userResponseModel.StatusCode = addToRoleResponse.StatusCode;
+        }
+    
+        var addToRoleResult = addToRoleResponse.Result?.FirstOrDefault();
+        if (addToRoleResult != null)
+        {
+            userResponseModel.Message += addToRoleResult.Succeeded
+                ? "User was assigned to a role"
+                : "User was not assigned to a role";
+        }
+        userResponseModel.Errors = addToRoleResponse.Errors;
+        userResponseModel.StatusCode = addToRoleResponse.StatusCode;
     }
 }

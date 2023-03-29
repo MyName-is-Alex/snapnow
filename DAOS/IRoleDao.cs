@@ -4,6 +4,6 @@ using snapnow.Models;
 
 namespace snapnow.DAOS;
 
-public interface IRoleDao : IDao<IdentityRole, string>
+public interface IRoleDao : IDao<IdentityRole, string, IdentityResult>
 {
 }

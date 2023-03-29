@@ -6,7 +6,7 @@ using snapnow.ErrorHandling;
 
 namespace snapnow.Services;
 
-public class RoleService : IBaseService<IdentityRole, RoleModel>
+public class RoleService : IBaseService<IdentityRole, RoleModel, IdentityResult>
 {
     private readonly IRoleDao _roleDao;
     public RoleService(IRoleDao roleDao)
@@ -14,34 +14,36 @@ public class RoleService : IBaseService<IdentityRole, RoleModel>
         _roleDao = roleDao;
     }
     
-    public async Task<DatabaseResponseModel<IdentityRole>> Add(RoleModel role)
+    public async Task<DatabaseResponseModel<IdentityResult>> Add(RoleModel role)
     {
+        var existentRoleResponse = GetBy(role.RoleName).Result.Result?.FirstOrDefault();
+
+        if (existentRoleResponse != null)
+        {
+            return new DatabaseResponseModel<IdentityResult>
+            {
+                Message = "Role already exists.",
+                IsSuccess = false
+            };
+        }
+        
         var temp = new IdentityRole
         {
             Name = role.RoleName
         };
-        return await _roleDao.Add(temp);
+        var addResponse = await _roleDao.Add(temp);
+
+        addResponse.Message = addResponse.IsSuccess ? "New role was added." : "Role was not added.";
+        
+        return addResponse;
     }
 
     public async Task<DatabaseResponseModel<IdentityRole>> GetBy(string roleName)
     {
         var result = await _roleDao.GetBy(roleName);
-        if (result.IsSuccess && result.Result?.FirstOrDefault() == null)
-        {
-            return new DatabaseResponseModel<IdentityRole>
-            {
-                Message = "Could not find role.",
-                IsSuccess = false,
-                Errors = result.Errors
-            };
-        }
+        result.Message = result.IsSuccess ? "Role was find." : "Could not find role.";
 
-        return new DatabaseResponseModel<IdentityRole>
-        {
-            Message = "Role is the first element in Result property.",
-            IsSuccess = true,
-            Result = result.Result
-        };
+        return result;
     }
 
     public DatabaseResponseModel<IdentityRole> GetAll()

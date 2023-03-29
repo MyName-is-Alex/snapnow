@@ -2,10 +2,10 @@
 
 namespace snapnow.Services;
 
-public interface IBaseService<T, in TP>
+public interface IBaseService<TResponse, in TAddParameter, TAddResponse>
 {
-    public Task<DatabaseResponseModel<T>> Add(TP item);
-    public Task<DatabaseResponseModel<T>> GetBy(string id);
-    public DatabaseResponseModel<T> GetAll();
-    public DatabaseResponseModel<T> Delete(TP item);
+    public Task<DatabaseResponseModel<TAddResponse>> Add(TAddParameter item);
+    public Task<DatabaseResponseModel<TResponse>> GetBy(string id);
+    public DatabaseResponseModel<TResponse> GetAll();
+    public DatabaseResponseModel<TResponse> Delete(TAddParameter item);
 }

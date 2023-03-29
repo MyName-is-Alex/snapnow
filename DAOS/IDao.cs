@@ -4,10 +4,10 @@ using snapnow.ErrorHandling;
 
 namespace snapnow.DAOS;
 
-public interface IDao<T, in TP>
+public interface IDao<TResponseType, in TGetByParam, TAddResponseType>
 {
-    public Task<DatabaseResponseModel<T>> Add(T item, string temp = "");
-    public Task<DatabaseResponseModel<T>> GetBy(TP validator);
-    public DatabaseResponseModel<T> GetAll();
-    public DatabaseResponseModel<T> Delete(T item);
+    public Task<DatabaseResponseModel<TAddResponseType>> Add(TResponseType item, string temp = "");
+    public Task<DatabaseResponseModel<TResponseType>> GetBy(TGetByParam validator);
+    public DatabaseResponseModel<TResponseType> GetAll();
+    public DatabaseResponseModel<TResponseType> Delete(TResponseType item);
 }

@@ -15,59 +15,40 @@ public class RoleDaoMssqlDatabase : IRoleDao
         _roleManager = roleManager; 
     }
     
-    public async Task<DatabaseResponseModel<IdentityRole>> Add(IdentityRole item, string temp)
+    public async Task<DatabaseResponseModel<IdentityResult>> Add(IdentityRole item, string temp)
     {
+        IdentityResult result;
         try
         {
-            if (_roleManager.Roles.Select(x => x.Name).Contains(item.Name))
-            {
-                return new DatabaseResponseModel<IdentityRole>
-                {
-                    Message = "This role already exists.",
-                    IsSuccess = false
-                };
-            }
-            
-            var result = await _roleManager.CreateAsync(item);
-            if (result.Succeeded)
-            {
-                return new DatabaseResponseModel<IdentityRole>
-                {
-                    Message = "Role has been added.",
-                    IsSuccess = true
-                };
-            }
-
-            return new DatabaseResponseModel<IdentityRole>
-            {
-                Message = "Role was not created.",
-                IsSuccess = false,
-                Errors = result.Errors.Select(x => x.Description)
-            };
+            result = await _roleManager.CreateAsync(item);
         }
         catch (Exception exception)
         {
-            return new DatabaseResponseModel<IdentityRole>
+            return new DatabaseResponseModel<IdentityResult>
             {
-                Message = "Error when trying to connect to database.",
+                Message = "Could not connect to database",
                 IsSuccess = false,
                 Errors = new List<string> {exception.Message}.AsEnumerable(),
                 StatusCode = 500
             };
         }
+        
+        return new DatabaseResponseModel<IdentityResult>
+        {
+            Message = "Connection to database was successful.",
+            IsSuccess = result.Succeeded,
+            Errors = result.Errors.Select(x => x.Description),
+            StatusCode = result.Succeeded ? 200 : 422,
+            Result = new List<IdentityResult>{result}
+        };
     }
 
     public async Task<DatabaseResponseModel<IdentityRole>> GetBy(string roleName)
     {
+        IdentityRole defaultRole;
         try
         {
-            var defaultRole = await _roleManager.FindByNameAsync(roleName);
-            return new DatabaseResponseModel<IdentityRole>
-            {
-                Message = "Connection to database was successful.",
-                IsSuccess = true,
-                Result = new List<IdentityRole>{defaultRole}
-            };
+            defaultRole = await _roleManager.FindByNameAsync(roleName);
         }
         catch (Exception exception)
         {
@@ -79,6 +60,14 @@ public class RoleDaoMssqlDatabase : IRoleDao
                 Errors = new List<string> { exception.Message }
             };
         }
+        
+        return new DatabaseResponseModel<IdentityRole>
+        {
+            Message = "Connection to database was successful.",
+            IsSuccess = defaultRole != null,
+            StatusCode = defaultRole != null ? 200 : 422,
+            Result = new List<IdentityRole>{defaultRole}
+        };
     }
 
     public DatabaseResponseModel<IdentityRole> GetAll()

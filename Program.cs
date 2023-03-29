@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -38,15 +39,19 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     options.Password.RequireUppercase = true;
     options.User.RequireUniqueEmail = true;
 
-}).AddRoles<IdentityRole>().AddEntityFrameworkStores<ApplicationDbContext>();
+}).AddRoles<IdentityRole>().AddEntityFrameworkStores<ApplicationDbContext>().AddDefaultTokenProviders();
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+builder.Services.AddAuthentication(auth =>
+    {
+        auth.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        auth.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
     .AddJwtBearer(opt =>
     {
         opt.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = true,
-            ValidateAudience = true,
+            ValidateIssuer = false,
+            ValidateAudience = false,
             ValidAudience = builder.Configuration["AuthSettings:Audience"],
             ValidIssuer = builder.Configuration["AuthSettings:Issuer"],
             ValidateLifetime = true,
@@ -62,10 +67,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 return Task.CompletedTask;
             }
         };
-    }).AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
-    {
-        options.ExpireTimeSpan = TimeSpan.FromDays(1);
-    });
+    }).AddCookie();
+
+/*builder.Services.AddAuthorization(auth => auth.AddPolicy());*/
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -110,9 +114,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.UseAuthorization();
-
 app.UseAuthentication();
+
+app.UseAuthorization();
 
 app.MapControllers();
 
