@@ -24,6 +24,7 @@ builder.Services.AddControllers();
 builder.Services.AddScoped<IRoleDao, RoleDaoMssqlDatabase>();
 builder.Services.AddScoped<IUserDao, UserDaoMssqlDatabase>();
 builder.Services.AddScoped<IUserService, UserServiceJwtCookie>();
+builder.Services.AddScoped<RoleService>();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));

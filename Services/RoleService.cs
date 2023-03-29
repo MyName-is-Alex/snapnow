@@ -23,9 +23,25 @@ public class RoleService : IBaseService<IdentityRole, RoleModel>
         return await _roleDao.Add(temp);
     }
 
-    public DatabaseResponseModel<IdentityRole> GetBy(int id)
+    public async Task<DatabaseResponseModel<IdentityRole>> GetBy(string roleName)
     {
-        throw new NotImplementedException();
+        var result = await _roleDao.GetBy(roleName);
+        if (result.IsSuccess && result.Result?.FirstOrDefault() == null)
+        {
+            return new DatabaseResponseModel<IdentityRole>
+            {
+                Message = "Could not find role.",
+                IsSuccess = false,
+                Errors = result.Errors
+            };
+        }
+
+        return new DatabaseResponseModel<IdentityRole>
+        {
+            Message = "Role is the first element in Result property.",
+            IsSuccess = true,
+            Result = result.Result
+        };
     }
 
     public DatabaseResponseModel<IdentityRole> GetAll()

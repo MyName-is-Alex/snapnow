@@ -11,9 +11,9 @@ public class RoleController : ControllerBase
 {
     private readonly RoleService _roleService;
 
-    public RoleController(IRoleDao roleDao)
+    public RoleController(RoleService roleService)
     {
-        _roleService = new RoleService(roleDao);
+        _roleService = roleService;
     }
     
     [HttpPost("add-roles")]

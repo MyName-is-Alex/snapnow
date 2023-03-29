@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using snapnow.ErrorHandling;
+using snapnow.Models;
 
 namespace snapnow.DAOS.MssqlDbImplementation;
 
@@ -56,18 +57,37 @@ public class RoleDaoMssqlDatabase : IRoleDao
         }
     }
 
-public DatabaseResponseModel<IdentityRole> GetBy(int id)
+    public async Task<DatabaseResponseModel<IdentityRole>> GetBy(string roleName)
     {
-        throw new NotImplementedException();
+        try
+        {
+            var defaultRole = await _roleManager.FindByNameAsync(roleName);
+            return new DatabaseResponseModel<IdentityRole>
+            {
+                Message = "Connection to database was successful.",
+                IsSuccess = true,
+                Result = new List<IdentityRole>{defaultRole}
+            };
+        }
+        catch (Exception exception)
+        {
+            return new DatabaseResponseModel<IdentityRole>
+            {
+                Message = "Could not connect to database.",
+                IsSuccess = false,
+                StatusCode = 500,
+                Errors = new List<string> { exception.Message }
+            };
+        }
     }
 
     public DatabaseResponseModel<IdentityRole> GetAll()
     {
-        throw new NotImplementedException();
+        throw new NotImplementedException(); 
     }
 
     public DatabaseResponseModel<IdentityRole> Delete(IdentityRole item)
     {
-        throw new NotImplementedException();
+        throw new NotImplementedException(); 
     }
 }
