@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Mvc;
 using snapnow.DTOS;
 using snapnow.Services;
 
@@ -48,8 +50,18 @@ public class AuthenticationController : ControllerBase
     }
 
     [HttpPost("logout")]
-    public IActionResult LogoutUserRoute()
+    public async Task<IActionResult> LogoutUserRoute()
     {
-        throw new NotImplementedException();
+        var response = await _userService.Logout(HttpContext);
+        if (response.IsSuccess)
+        {
+            return Ok(response);
+        }
+
+        return Problem(
+            statusCode: response.StatusCode,
+            title: response.Message,
+            detail: response.Errors != null ? String.Join("/n", response.Errors) : ""
+        );
     }
 }

@@ -3,6 +3,8 @@ using System.Security.Claims;
 using System.Text;
 using Azure;
 using Azure.Core;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
 using snapnow.DAOS;
@@ -86,9 +88,9 @@ public class UserServiceJwtCookie : IUserService
         {
             return new UserResponseModel
             {
-                Message = userResponse.Message,
-                IsSuccess = userResponse.IsSuccess,
-                Errors = userResponse.Errors
+                Message = checkPasswordResponse.Message,
+                IsSuccess = correctPassword,
+                Errors = checkPasswordResponse.Errors
             };
         }
 
@@ -121,21 +123,29 @@ public class UserServiceJwtCookie : IUserService
         
         // set cookie
         context.Response.Cookies.Append("Token", tokenAsString, cookieOptions);
-        bool isCookieSet = context.Request.Cookies["Token"] != null;
+
+        /*bool isCookieSet = context.Request.Cookies.Keys.Contains("Token");*/
         return new UserResponseModel
         {
-            Message = isCookieSet ? "Cookie was set." : "Cookie was not set.",
-            IsSuccess = isCookieSet,
-            Errors = new List<string>{isCookieSet ? "" : "Failed to append the cookie in the browser."},
-            StatusCode = isCookieSet ? 200 : 500,
+            Message = "Cookie was set.",
+            IsSuccess = true,
+            StatusCode = 200,
             ExpireDate = token.ValidTo,
             Token = tokenAsString
         };
     }
 
-    public UserResponseModel Logout()
+    public async Task<UserResponseModel> Logout(HttpContext context)
     {
-        throw new NotImplementedException();
+        await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        context.Response.Cookies.Delete("Token");
+
+        return new UserResponseModel
+        {
+            Message = "User logged out successfully.",
+            IsSuccess = true,
+            StatusCode = 200
+        };
     }
 
     private bool phoneNumberAlreadyExists(ref UserResponseModel userResponseModel, string phoneNumber)
