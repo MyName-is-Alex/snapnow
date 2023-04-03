@@ -1,8 +1,6 @@
 ﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using Azure;
-using Azure.Core;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
@@ -27,7 +25,7 @@ public class UserServiceJwtCookie : IUserService
         _configuration = configuration;
     }
     
-    public async Task<UserResponseModel> RegisterUser(RegisterUserModel userModel)
+    public async Task<IBaseResponse> RegisterUser(RegisterUserModel userModel)
     {
         var userResponseModel = new UserResponseModel();
 
@@ -39,10 +37,17 @@ public class UserServiceJwtCookie : IUserService
         if (passwordDoesNotMatch(ref userResponseModel, userModel.Password, userModel.ConfirmPassword))
             return userResponseModel;
         
-        
-        if (phoneNumberAlreadyExists(ref userResponseModel, userModel.PhoneNumber))
-            return userResponseModel;
-        
+        var databaseResponse = _userDao.CheckPhoneNumber(userModel.PhoneNumber);
+        var isUniquePhoneNumber = databaseResponse.Result;
+        if (!databaseResponse.IsSuccess)
+            return databaseResponse;
+
+        if (!isUniquePhoneNumber)
+        {
+            databaseResponse.Message = "The phone number is already in use.";
+            databaseResponse.IsSuccess = false;
+            return databaseResponse;
+        }
 
         var identityUser = new ApplicationUser
         {   
@@ -51,55 +56,112 @@ public class UserServiceJwtCookie : IUserService
             PhoneNumber = userModel.PhoneNumber
         };
         
-        var result = await _userDao.Add(identityUser, userModel.Password);
-        if (!userAddedToDb(ref userResponseModel, result))
-            return userResponseModel;
+        var addUserResponse = await _userDao.Add(identityUser, userModel.Password);
+        if (!addUserResponse.IsSuccess)
+            return addUserResponse;
 
+        if (!addUserResponse.Result.Succeeded)
+        {
+            addUserResponse.Message = "User could not be added to database.";
+            addUserResponse.IsSuccess = false;
+            return addUserResponse;
+        }
+        
         var roleResponse = await _roleDao.GetBy(userModel.Role);
-        var defaultUser = roleResponse.Result?.FirstOrDefault();
+        if (!roleResponse.IsSuccess)
+            return roleResponse;
+        
+        var defaultUser = roleResponse.Result;
         if (defaultUser == null)
         {
-            userResponseModel.Message += " // User was not assigned to a role";
-            return userResponseModel;
+            roleResponse.Message = "User was added to database. // User was not assigned to a role";
+            return roleResponse;
         }
         
         var addToRoleResponse = await _userDao.AddUserToRole(identityUser, defaultUser.Name);
-        userAssignedToRole(ref userResponseModel, addToRoleResponse);
+        if (!addToRoleResponse.IsSuccess)
+        {
+            addToRoleResponse.Message =
+                "User was added to database. // User was not assigned to a role. // Could not connect to database.";
+            return addToRoleResponse;
+        }
+
+        if (!addToRoleResponse.Result.Succeeded)
+        {
+            addToRoleResponse.Message =
+                "User was added to database. // User was not assigned to a role. // Could not connect to database.";
+            addToRoleResponse.IsSuccess = false;
+            return addToRoleResponse;
+        }
+        
+        // if everything ok, user is registered
+        userResponseModel.Message = "User was registered successfully";
+        userResponseModel.StatusCode = 200;
+        userResponseModel.IsSuccess = true;
         return userResponseModel;
     }
 
-    public async Task<UserResponseModel> LoginUser(LoginUserModel userModel, HttpContext context)
+    public async Task<IBaseResponse> LoginUser(LoginUserModel userModel, HttpContext context)
     {
-        var userResponse = await _userDao.GetBy(userModel.Email);
-        var user = userResponse.Result?.FirstOrDefault();
-        if (!userResponse.IsSuccess)
+        var databaseResponse = await _userDao.GetBy(userModel.Email);
+        if (!databaseResponse.IsSuccess) 
+            return databaseResponse;
+        
+        var user = databaseResponse.Result;
+
+        if (user == null)
         {
-            return new UserResponseModel
-            {
-                Message = userResponse.Message,
-                IsSuccess = userResponse.IsSuccess,
-                Errors = userResponse.Errors
-            };
+            databaseResponse.Message = "Email or password is invalid.";
+            databaseResponse.IsSuccess = false;
+            return databaseResponse;
         }
         
         var checkPasswordResponse = await _userDao.CheckPassword(user, userModel.Password);
-        var correctPassword = checkPasswordResponse.IsSuccess;
+        if (!checkPasswordResponse.IsSuccess)
+            return checkPasswordResponse;
+        
+        var correctPassword = checkPasswordResponse.Result;
+
         if (!correctPassword)
         {
-            return new UserResponseModel
-            {
-                Message = checkPasswordResponse.Message,
-                IsSuccess = correctPassword,
-                Errors = checkPasswordResponse.Errors
-            };
+            checkPasswordResponse.Message = "Email or password is invalid.";
+            checkPasswordResponse.IsSuccess = false;
+            return checkPasswordResponse;
         }
+
+        var userRolesResponse = await _userDao.GetRolesForUser(user);
+        if (!userRolesResponse.IsSuccess)
+            return userRolesResponse;
+        
+        var userRoles = String.Join(",", userRolesResponse.Result);
+
+        ClaimsIdentity identity = new ClaimsIdentity(new[]
+        {
+            new Claim(ClaimTypes.Email, userModel.Email),
+            new Claim(ClaimTypes.Role, userRoles)
+        });
+        ClaimsPrincipal principal = new ClaimsPrincipal(identity);
+
+        var userCanSignInResponse = await _userDao.UserConfirmedEmail(user);
+        if (!userCanSignInResponse.IsSuccess)
+            return userCanSignInResponse;
+
+        if (!userCanSignInResponse.Result)
+        {
+            userCanSignInResponse.Message = "You must confirm your email.";
+            userCanSignInResponse.IsSuccess = false;
+            return userCanSignInResponse;
+        }
+        
+        // if everything is ok the user is signed in
 
         var claims = new[]
         {
-            new Claim("Email", userModel.Email),
-            new Claim(ClaimTypes.NameIdentifier, user.Id)
+            new Claim(ClaimTypes.Email, userModel.Email),
+            new Claim(ClaimTypes.Role, userRoles)
         };
 
+        
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["AuthSettings:Key"]));
 
         var token = new JwtSecurityToken(
@@ -111,7 +173,7 @@ public class UserServiceJwtCookie : IUserService
         );
 
         string tokenAsString = new JwtSecurityTokenHandler().WriteToken(token);
-        
+
         var cookieOptions = new CookieOptions
         {
             HttpOnly = true,
@@ -120,24 +182,24 @@ public class UserServiceJwtCookie : IUserService
             IsEssential = true,
             Secure = true
         };
-        
-        // set cookie
-        context.Response.Cookies.Append("Token", tokenAsString, cookieOptions);
 
-        /*bool isCookieSet = context.Request.Cookies.Keys.Contains("Token");*/
+        context.Response.Cookies.Append("Token", tokenAsString, cookieOptions);
+        
+        userCanSignInResponse.Message = "Cookie was set.";
+        userCanSignInResponse.IsSuccess = true;
         return new UserResponseModel
         {
             Message = "Cookie was set.",
             IsSuccess = true,
-            StatusCode = 200,
+            StatusCode = userCanSignInResponse.StatusCode,
+            Errors = userCanSignInResponse.Errors,
             ExpireDate = token.ValidTo,
             Token = tokenAsString
         };
     }
 
-    public async Task<UserResponseModel> Logout(HttpContext context)
+    public async Task<IBaseResponse> Logout(HttpContext context)
     {
-        await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         context.Response.Cookies.Delete("Token");
 
         return new UserResponseModel
@@ -148,36 +210,11 @@ public class UserServiceJwtCookie : IUserService
         };
     }
 
-    private bool phoneNumberAlreadyExists(ref UserResponseModel userResponseModel, string phoneNumber)
-    {
-        var databaseResponse = _userDao.CheckPhoneNumber(phoneNumber);
-        var isUniquePhoneNumber = databaseResponse.Result?.FirstOrDefault() == null;
-        if (!databaseResponse.IsSuccess)
-        {
-            userResponseModel.Message = databaseResponse.Message;
-            userResponseModel.IsSuccess = databaseResponse.IsSuccess;
-            userResponseModel.StatusCode = databaseResponse.StatusCode;
-            userResponseModel.Errors = databaseResponse.Errors;
-            return true;
-        }
-
-        if (!isUniquePhoneNumber)
-        {
-            userResponseModel.Message = "Phone number is already in use.";
-            userResponseModel.IsSuccess = isUniquePhoneNumber;
-            userResponseModel.StatusCode = databaseResponse.StatusCode;
-            userResponseModel.Errors = databaseResponse.Errors;
-            return true;
-        }
-
-        return false;
-    }
-
     private bool passwordDoesNotMatch(ref UserResponseModel userResponseModel, string password1, string password2)
     {
         if (password1 != password2)
         {
-            userResponseModel.Message = "Wrong input";
+            userResponseModel.Message = "Passwords does not match.";
             userResponseModel.IsSuccess = false;
             userResponseModel.StatusCode = 422;
             userResponseModel.Errors = new List<string> { "Password doesn't match." };
@@ -185,45 +222,5 @@ public class UserServiceJwtCookie : IUserService
         }
 
         return false;
-    }
-
-    private bool userAddedToDb(ref UserResponseModel userResponseModel, DatabaseResponseModel<IdentityResult> databaseResponse)
-    {
-        if (!databaseResponse.IsSuccess)
-        {
-            userResponseModel.Message = databaseResponse.Message;
-            userResponseModel.IsSuccess = databaseResponse.IsSuccess;
-            userResponseModel.StatusCode = databaseResponse.StatusCode;
-            return false;
-        }
-
-        var userAddedToDb = databaseResponse.Result?.FirstOrDefault();
-        userResponseModel.Message = userAddedToDb.Succeeded ? "User added to db." : "User was not added to db.";
-        userResponseModel.IsSuccess = userAddedToDb.Succeeded;
-        userResponseModel.Errors = databaseResponse.Errors;
-        userResponseModel.StatusCode = databaseResponse.StatusCode;
-
-        return userAddedToDb.Succeeded;
-    }
-
-    private void userAssignedToRole(ref UserResponseModel userResponseModel, DatabaseResponseModel<IdentityResult> addToRoleResponse)
-    {
-        if (!addToRoleResponse.IsSuccess)
-        {
-            userResponseModel.Message = addToRoleResponse.Message;
-            userResponseModel.IsSuccess = addToRoleResponse.IsSuccess;
-            userResponseModel.Errors = addToRoleResponse.Errors;
-            userResponseModel.StatusCode = addToRoleResponse.StatusCode;
-        }
-    
-        var addToRoleResult = addToRoleResponse.Result?.FirstOrDefault();
-        if (addToRoleResult != null)
-        {
-            userResponseModel.Message += addToRoleResult.Succeeded
-                ? "User was assigned to a role"
-                : "User was not assigned to a role";
-        }
-        userResponseModel.Errors = addToRoleResponse.Errors;
-        userResponseModel.StatusCode = addToRoleResponse.StatusCode;
     }
 }

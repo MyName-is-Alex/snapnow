@@ -5,7 +5,7 @@ namespace snapnow.Services;
 
 public interface IUserService
 {
-    public Task<UserResponseModel> RegisterUser(RegisterUserModel userModel);
-    public Task<UserResponseModel> LoginUser(LoginUserModel userModel, HttpContext context);
-    public Task<UserResponseModel> Logout(HttpContext context);
+    public Task<IBaseResponse> RegisterUser(RegisterUserModel userModel);
+    public Task<IBaseResponse> LoginUser(LoginUserModel userModel, HttpContext context);
+    public Task<IBaseResponse> Logout(HttpContext context);
 }

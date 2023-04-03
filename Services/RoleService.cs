@@ -16,7 +16,7 @@ public class RoleService : IBaseService<IdentityRole, RoleModel, IdentityResult>
     
     public async Task<DatabaseResponseModel<IdentityResult>> Add(RoleModel role)
     {
-        var existentRoleResponse = GetBy(role.RoleName).Result.Result?.FirstOrDefault();
+        var existentRoleResponse = GetBy(role.RoleName).Result.Result;
 
         if (existentRoleResponse != null)
         {

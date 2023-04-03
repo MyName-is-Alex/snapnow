@@ -1,4 +1,5 @@
-﻿using Azure.Core;
+﻿using System.Linq.Expressions;
+using Azure.Core;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using snapnow.ErrorHandling;
@@ -39,7 +40,7 @@ public class RoleDaoMssqlDatabase : IRoleDao
             IsSuccess = result.Succeeded,
             Errors = result.Errors.Select(x => x.Description),
             StatusCode = result.Succeeded ? 200 : 422,
-            Result = new List<IdentityResult>{result}
+            Result =result
         };
     }
 
@@ -64,9 +65,10 @@ public class RoleDaoMssqlDatabase : IRoleDao
         return new DatabaseResponseModel<IdentityRole>
         {
             Message = "Connection to database was successful.",
-            IsSuccess = defaultRole != null,
+            IsSuccess = true,
             StatusCode = defaultRole != null ? 200 : 422,
-            Result = new List<IdentityRole>{defaultRole}
+            Errors = defaultRole != null ? new List<string>() : new List<string>{"Could not find any role with this name."},
+            Result = defaultRole
         };
     }
 
