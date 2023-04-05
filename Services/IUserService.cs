@@ -1,11 +1,17 @@
-﻿using snapnow.DTOS;
+﻿using System.Net;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using snapnow.DTOS;
 using snapnow.ErrorHandling;
+using snapnow.Models;
 
 namespace snapnow.Services;
 
 public interface IUserService
 {
-    public Task<IBaseResponse> RegisterUser(RegisterUserModel userModel);
-    public Task<IBaseResponse> LoginUser(LoginUserModel userModel, HttpContext context);
-    public Task<IBaseResponse> Logout(HttpContext context);
+    public Task<IBaseResponse> RegisterUser(RegisterUserModel userModel, IUrlHelper urlHelper);
+    public Task<IBaseResponse> LoginUser(LoginUserModel userModel);
+    public IBaseResponse Logout();
+    public Task<DatabaseResponseModel<ApplicationUser>> GetUserById(string userId);
+    public Task<IBaseResponse> ConfirmUserEmail(string user, string token);
 }

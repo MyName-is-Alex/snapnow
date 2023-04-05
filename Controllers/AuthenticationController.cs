@@ -1,7 +1,7 @@
-﻿using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Components.Web;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using snapnow.DTOS;
+using snapnow.Models;
 using snapnow.Services;
 
 namespace snapnow.Controllers;
@@ -11,16 +11,19 @@ namespace snapnow.Controllers;
 public class AuthenticationController : ControllerBase
 {
     private readonly IUserService _userService;
+    private readonly IMailService _mailService;
 
-    public AuthenticationController(IUserService userService)
+
+    public AuthenticationController(IUserService userService, IMailService mailService)
     {
         _userService = userService;
+        _mailService = mailService;
     }
     
     [HttpPost("register")]
     public async Task<IActionResult> RegisterUserRoute([FromForm]RegisterUserModel userModel)
     {
-        var result = await _userService.RegisterUser(userModel);
+        var result = await _userService.RegisterUser(userModel, Url);
         if (result.IsSuccess)
         {
             return Ok(result);
@@ -36,7 +39,7 @@ public class AuthenticationController : ControllerBase
     [HttpPost("login")]
     public async Task<IActionResult> LoginUserRoute([FromForm] LoginUserModel userModel)
     {
-        var response = await _userService.LoginUser(userModel, HttpContext);
+        var response = await _userService.LoginUser(userModel);
         if (response.IsSuccess)
         {
             return Ok(response);
@@ -49,10 +52,11 @@ public class AuthenticationController : ControllerBase
         );
     }
 
+    [Authorize]
     [HttpPost("logout")]
-    public async Task<IActionResult> LogoutUserRoute()
+    public IActionResult LogoutUserRoute()
     {
-        var response = await _userService.Logout(HttpContext);
+        var response = _userService.Logout();
         if (response.IsSuccess)
         {
             return Ok(response);
@@ -63,5 +67,31 @@ public class AuthenticationController : ControllerBase
             title: response.Message,
             detail: response.Errors != null ? String.Join("/n", response.Errors) : ""
         );
+    }
+
+    [HttpGet("confirm-email")]
+    public async Task<IActionResult> ConfirmEmail(string Id, string token)
+    {
+        if (string.IsNullOrEmpty(Id) || string.IsNullOrEmpty(token))
+        {
+            return Problem(
+                title: "Email NOT confirmed.",
+                detail: "Some required email confirmation information was not specified.",
+                statusCode: 400
+            );
+        }
+
+        var confirmEmailResponse = await _userService.ConfirmUserEmail(Id, token);
+        
+        if (!confirmEmailResponse.IsSuccess)
+        {
+            return Problem(
+                title: confirmEmailResponse.Message,
+                detail: confirmEmailResponse.Errors != null ? String.Join("/n", confirmEmailResponse.Errors) : "",
+                statusCode: confirmEmailResponse.StatusCode
+            );
+        }
+        
+        return Ok(confirmEmailResponse);
     }
 }

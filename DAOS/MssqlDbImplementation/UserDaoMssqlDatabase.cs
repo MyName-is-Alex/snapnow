@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore.Storage;
+using snapnow.Data;
 using snapnow.ErrorHandling;
 using snapnow.Models;
 
@@ -8,12 +9,12 @@ namespace snapnow.DAOS.MssqlDbImplementation;
 public class UserDaoMssqlDatabase : IUserDao
 {
     private readonly UserManager<ApplicationUser> _userManager;
-    public readonly SignInManager<ApplicationUser> _signInManager;
+    private readonly ApplicationDbContext _dbContext;
 
-    public UserDaoMssqlDatabase(UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager)
+    public UserDaoMssqlDatabase(UserManager<ApplicationUser> userManager, ApplicationDbContext dbContext)
     {
         _userManager = userManager;
-        _signInManager = signInManager;
+        _dbContext = dbContext;
     }
 
     public async Task<DatabaseResponseModel<IdentityResult>> Add(ApplicationUser applicationUser, string password)
@@ -45,7 +46,7 @@ public class UserDaoMssqlDatabase : IUserDao
     }
 
 
-    public async Task<DatabaseResponseModel<ApplicationUser>> GetBy(string email)
+    public async Task<DatabaseResponseModel<ApplicationUser>> GetByNameIdentifier(string email)
     {
         ApplicationUser identityUser;
         try
@@ -73,6 +74,34 @@ public class UserDaoMssqlDatabase : IUserDao
         };
     }
 
+    public async Task<DatabaseResponseModel<ApplicationUser>> GetById(string userId)
+    {
+        ApplicationUser user;
+        try
+        {
+            user = await _userManager.FindByIdAsync(userId);
+        }
+        catch (Exception exception)
+        {
+            return new DatabaseResponseModel<ApplicationUser>
+            {
+                Message = "Database exception.",
+                IsSuccess = false,
+                StatusCode = 500,
+                Errors = new List<string>{exception.Message}
+            };
+        }
+
+        return new DatabaseResponseModel<ApplicationUser>
+        {
+            Message = "Connection to database was successful.",
+            IsSuccess = true,
+            Result = user,
+            StatusCode = user != null ? 200 : 422,
+            Errors = new List<string>{user == null ? "There is no user with this ID." : ""}
+        };
+    }
+    
     public DatabaseResponseModel<ApplicationUser> GetAll()
     {
         throw new NotImplementedException();
@@ -194,7 +223,34 @@ public class UserDaoMssqlDatabase : IUserDao
         };
     }
 
-    /*public async Task<DatabaseResponseModel<IdentityResult> */
+    public async Task<DatabaseResponseModel<string>> GenerateConfirmationToken(ApplicationUser user)
+    {
+        string result;
+        
+        try
+        {
+            result = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+        }
+        catch (Exception exception)
+        {
+            return new DatabaseResponseModel<string>
+            {
+                Message = "Database exception",
+                IsSuccess = false,
+                Errors = new List<string>{ exception.Message },
+                StatusCode = 500
+            };
+        }
+        
+        return new DatabaseResponseModel<string>
+        {
+            Message = "Connection to database was successful.",
+            IsSuccess = true,
+            Errors = new List<string>{result ?? "Could not generate email confirmation token."},
+            Result = result,
+            StatusCode = result != null ? 200 : 422
+        };
+    }
 
     public async Task<DatabaseResponseModel<bool>> UserConfirmedEmail(ApplicationUser user)
     {
@@ -220,6 +276,35 @@ public class UserDaoMssqlDatabase : IUserDao
             IsSuccess = true,
             StatusCode = result ? 200 : 403,
             Result = result
+        };
+    }
+
+    public async Task<DatabaseResponseModel<IdentityResult>> ConfirmUserEmail(ApplicationUser user, string token)
+    {
+        IdentityResult result;
+
+        try
+        {
+            result = await _userManager.ConfirmEmailAsync(user, token);
+        }
+        catch (Exception exception)
+        {
+            return new DatabaseResponseModel<IdentityResult>
+            {
+                Message = "Database exception.",
+                IsSuccess = false,
+                Errors = new List<string> { exception.Message },
+                StatusCode = 500
+            };
+        }
+
+        return new DatabaseResponseModel<IdentityResult>
+        {
+            Message = "Connection to database was successful.",
+            IsSuccess = true,
+            StatusCode = result.Succeeded ? 200 : 422,
+            Result = result,
+            Errors = result.Errors.Select(x => x.Description)
         };
     }
 }

@@ -7,5 +7,7 @@ public class UserResponseModel : IBaseResponse
     public int StatusCode { get; set; }
     public IEnumerable<string>? Errors { get; set; }
     public string? Token { get; set; }
+    public string? ConfirmationLink { get; set; }
+
     public DateTime ExpireDate { get; set; }
 }

@@ -12,4 +12,7 @@ public interface IUserDao : IDao<ApplicationUser, string, IdentityResult>
     public Task<DatabaseResponseModel<bool>> CheckPassword(ApplicationUser identityUser, string password);
     public Task<DatabaseResponseModel<IList<string>>> GetRolesForUser(ApplicationUser user);
     public Task<DatabaseResponseModel<bool>> UserConfirmedEmail(ApplicationUser user);
+    public Task<DatabaseResponseModel<string>> GenerateConfirmationToken(ApplicationUser user);
+    public Task<DatabaseResponseModel<ApplicationUser>> GetById(string validator);
+    public Task<DatabaseResponseModel<IdentityResult>> ConfirmUserEmail(ApplicationUser user, string token);
 }

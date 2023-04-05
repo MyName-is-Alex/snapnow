@@ -1,14 +1,16 @@
 ﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.IdentityModel.Tokens;
 using snapnow.DAOS;
 using snapnow.DTOS;
 using snapnow.ErrorHandling;
 using snapnow.Models;
+
 
 namespace snapnow.Services;
 
@@ -17,15 +19,18 @@ public class UserServiceJwtCookie : IUserService
     private readonly IUserDao _userDao;
     private readonly RoleService _roleDao;
     private readonly IConfiguration _configuration;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public UserServiceJwtCookie(IUserDao userDao, RoleService roleDao, IConfiguration configuration)
+    public UserServiceJwtCookie(IUserDao userDao, RoleService roleDao, IConfiguration configuration, 
+        IHttpContextAccessor httpContextAccessor)
     {
         _userDao = userDao;
         _roleDao = roleDao;
         _configuration = configuration;
+        _httpContextAccessor = httpContextAccessor;
     }
-    
-    public async Task<IBaseResponse> RegisterUser(RegisterUserModel userModel)
+
+    public async Task<IBaseResponse> RegisterUser(RegisterUserModel userModel, IUrlHelper urlHelper)
     {
         var userResponseModel = new UserResponseModel();
 
@@ -60,7 +65,7 @@ public class UserServiceJwtCookie : IUserService
         if (!addUserResponse.IsSuccess)
             return addUserResponse;
 
-        if (!addUserResponse.Result.Succeeded)
+        if (!addUserResponse.Result!.Succeeded)
         {
             addUserResponse.Message = "User could not be added to database.";
             addUserResponse.IsSuccess = false;
@@ -86,7 +91,7 @@ public class UserServiceJwtCookie : IUserService
             return addToRoleResponse;
         }
 
-        if (!addToRoleResponse.Result.Succeeded)
+        if (!addToRoleResponse.Result!.Succeeded)
         {
             addToRoleResponse.Message =
                 "User was added to database. // User was not assigned to a role. // Could not connect to database.";
@@ -94,16 +99,28 @@ public class UserServiceJwtCookie : IUserService
             return addToRoleResponse;
         }
         
-        // if everything ok, user is registered
-        userResponseModel.Message = "User was registered successfully";
-        userResponseModel.StatusCode = 200;
-        userResponseModel.IsSuccess = true;
-        return userResponseModel;
+        // if everything ok, create email confirmation token
+        
+        var emailConfirmationLinkResponse = await GetEmailConfirmationLink(identityUser, urlHelper);
+        if (!emailConfirmationLinkResponse.IsSuccess)
+        {
+            emailConfirmationLinkResponse.Message +=
+                " // User was added to database.";
+            return emailConfirmationLinkResponse;
+        }
+
+        return new UserResponseModel
+        {
+            Message = "User was registered successfully",
+            StatusCode = 200,
+            IsSuccess = true,
+            ConfirmationLink = emailConfirmationLinkResponse.Result
+        };
     }
 
-    public async Task<IBaseResponse> LoginUser(LoginUserModel userModel, HttpContext context)
+    public async Task<IBaseResponse> LoginUser(LoginUserModel userModel)
     {
-        var databaseResponse = await _userDao.GetBy(userModel.Email);
+        var databaseResponse = await _userDao.GetByNameIdentifier(userModel.Email);
         if (!databaseResponse.IsSuccess) 
             return databaseResponse;
         
@@ -133,15 +150,8 @@ public class UserServiceJwtCookie : IUserService
         if (!userRolesResponse.IsSuccess)
             return userRolesResponse;
         
-        var userRoles = String.Join(",", userRolesResponse.Result);
-
-        ClaimsIdentity identity = new ClaimsIdentity(new[]
-        {
-            new Claim(ClaimTypes.Email, userModel.Email),
-            new Claim(ClaimTypes.Role, userRoles)
-        });
-        ClaimsPrincipal principal = new ClaimsPrincipal(identity);
-
+        var userRoles = String.Join(",", userRolesResponse.Result!);
+        
         var userCanSignInResponse = await _userDao.UserConfirmedEmail(user);
         if (!userCanSignInResponse.IsSuccess)
             return userCanSignInResponse;
@@ -162,7 +172,7 @@ public class UserServiceJwtCookie : IUserService
         };
 
         
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["AuthSettings:Key"]));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["AuthSettings:Key"]!));
 
         var token = new JwtSecurityToken(
             issuer: _configuration["AuthSettings:Issuer"],
@@ -183,7 +193,7 @@ public class UserServiceJwtCookie : IUserService
             Secure = true
         };
 
-        context.Response.Cookies.Append("Token", tokenAsString, cookieOptions);
+        _httpContextAccessor.HttpContext!.Response.Cookies.Append("Token", tokenAsString, cookieOptions);
         
         userCanSignInResponse.Message = "Cookie was set.";
         userCanSignInResponse.IsSuccess = true;
@@ -198,9 +208,9 @@ public class UserServiceJwtCookie : IUserService
         };
     }
 
-    public async Task<IBaseResponse> Logout(HttpContext context)
+    public IBaseResponse Logout()
     {
-        context.Response.Cookies.Delete("Token");
+        _httpContextAccessor.HttpContext!.Response.Cookies.Delete("Token");
 
         return new UserResponseModel
         {
@@ -208,6 +218,93 @@ public class UserServiceJwtCookie : IUserService
             IsSuccess = true,
             StatusCode = 200
         };
+    }
+
+    public async Task<DatabaseResponseModel<ApplicationUser>> GetUserById(string userId)
+    {
+        var userResponse = await _userDao.GetById(userId);
+        if (!userResponse.IsSuccess)
+        {
+            return userResponse;
+        }
+
+        if (userResponse.Result == null)
+        {
+            userResponse.Message = "Could not find user.";
+            userResponse.IsSuccess = false;
+            return userResponse;
+        }
+
+        return userResponse;
+    }
+    
+    private async Task<DatabaseResponseModel<string>> GetEmailConfirmationLink(ApplicationUser user, IUrlHelper urlHelper) 
+    { 
+        var tokenResponse = await _userDao.GenerateConfirmationToken(user);
+        if (!tokenResponse.IsSuccess)
+            return tokenResponse;
+
+        var token = tokenResponse.Result;
+
+        if (token == null)
+        {
+            tokenResponse.Message = "Could not generate token.";
+            tokenResponse.IsSuccess = false;
+            return tokenResponse;
+        }
+
+        var confirmationLink = urlHelper.Action(
+            "ConfirmEmail", "Authentication",
+            new { user.Id, token },
+            _httpContextAccessor.HttpContext!.Request.Scheme
+        );
+
+        if (confirmationLink == null)
+        {
+            tokenResponse.Message = "Could not generate link.";
+            tokenResponse.IsSuccess = false;
+            return tokenResponse;
+        }
+        
+        tokenResponse.Message = "Token was generated successfully.";
+        tokenResponse.IsSuccess = true;
+        tokenResponse.StatusCode = 200;
+        tokenResponse.Result = confirmationLink;
+
+        return tokenResponse;
+    }
+
+    public async Task<IBaseResponse> ConfirmUserEmail(string userId, string token)
+    {
+        var userResponse = await _userDao.GetById(userId);
+        
+        if (!userResponse.IsSuccess)
+        {
+            return userResponse;
+        }
+
+        if (userResponse.Result == null)
+        {
+            userResponse.Message = "Could not find user.";
+            userResponse.IsSuccess = false;
+            return userResponse;
+        }
+        
+        var confirmEmailResponse = await _userDao.ConfirmUserEmail(userResponse.Result, token);
+        if (!confirmEmailResponse.IsSuccess)
+        {
+            return confirmEmailResponse;
+        }
+
+        if (!confirmEmailResponse.Result!.Succeeded)
+        {
+            confirmEmailResponse.Message = "Email was not confirmed.";
+            confirmEmailResponse.IsSuccess = false;
+            return confirmEmailResponse;
+        }
+
+        confirmEmailResponse.Message = "Thank you for confirming your email address.";
+        return confirmEmailResponse;
     }
 
     private bool passwordDoesNotMatch(ref UserResponseModel userResponseModel, string password1, string password2)

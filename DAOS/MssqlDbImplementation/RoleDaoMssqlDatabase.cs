@@ -44,7 +44,7 @@ public class RoleDaoMssqlDatabase : IRoleDao
         };
     }
 
-    public async Task<DatabaseResponseModel<IdentityRole>> GetBy(string roleName)
+    public async Task<DatabaseResponseModel<IdentityRole>> GetByNameIdentifier(string roleName)
     {
         IdentityRole defaultRole;
         try

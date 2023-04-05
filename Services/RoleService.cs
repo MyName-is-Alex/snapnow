@@ -40,7 +40,7 @@ public class RoleService : IBaseService<IdentityRole, RoleModel, IdentityResult>
 
     public async Task<DatabaseResponseModel<IdentityRole>> GetBy(string roleName)
     {
-        var result = await _roleDao.GetBy(roleName);
+        var result = await _roleDao.GetByNameIdentifier(roleName);
         result.Message = result.IsSuccess ? "Role was find." : "Could not find role.";
 
         return result;
