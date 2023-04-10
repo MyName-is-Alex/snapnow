@@ -15,4 +15,5 @@ public interface IUserDao : IDao<ApplicationUser, string, IdentityResult>
     public Task<DatabaseResponseModel<string>> GenerateConfirmationToken(ApplicationUser user);
     public Task<DatabaseResponseModel<ApplicationUser>> GetById(string validator);
     public Task<DatabaseResponseModel<IdentityResult>> ConfirmUserEmail(ApplicationUser user, string token);
+    public Task<DatabaseResponseModel<IdentityResult>> AddUserLogin(ApplicationUser userId, UserLoginInfo loginInfo);
 }

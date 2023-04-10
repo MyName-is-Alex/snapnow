@@ -5,7 +5,7 @@ using snapnow.Services;
 
 namespace snapnow.Controllers;
 
-[Authorize(Roles = "Admin")]
+[Authorize]
 [ApiController]
 [Route("api/role")]
 public class RoleController : ControllerBase

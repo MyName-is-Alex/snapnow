@@ -1,10 +1,6 @@
 using System.Text;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Infrastructure;
-using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -14,12 +10,21 @@ using snapnow.Data;
 using snapnow.Models;
 using snapnow.Services;
 
+
 var builder = WebApplication.CreateBuilder(args);
 // Add logger
 builder.Host.ConfigureLogging(logging =>
 {
     logging.ClearProviders();
     logging.AddConsole();
+});
+
+var myAllowSpecificOrigins = "MyAllowSpecificOrigins";
+builder.Services.AddCors(cors => {
+    cors.AddPolicy(name: myAllowSpecificOrigins, policy =>
+    {
+        policy.WithOrigins("http://127.0.0.1:8080", "http://127.0.0.1:5500", "127.0.0.1:5500", "127.0.0.1:8080").AllowCredentials().AllowAnyHeader().AllowAnyMethod();
+    });
 });
 
 // Add services to the container.
@@ -76,6 +81,11 @@ builder.Services.AddAuthentication(auth =>
                 return Task.CompletedTask;
             }
         };
+    }).AddGoogle(options =>
+    {
+        options.ClientId = builder.Configuration["GoogleAuthSettingsMobile:ClientId"];
+        options.ClientSecret = builder.Configuration["GoogleAuthSettingsMobile:ClientSecret"];
+        options.CallbackPath = "/api/authentication/signin-google";
     });
 
 builder.Services.Configure<MailSettings>(builder.Configuration.GetSection("MailSettings"));
@@ -122,6 +132,12 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors(opt =>
+{
+    opt.AllowAnyHeader().AllowAnyMethod().AllowCredentials().WithOrigins("http://127.0.0.1:8080",
+        "http://127.0.0.1:5500", "127.0.0.1:5500", "127.0.0.1:8080");
+});
 
 app.UseAuthentication();
 

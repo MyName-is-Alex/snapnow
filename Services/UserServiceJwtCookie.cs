@@ -1,11 +1,13 @@
 ﻿using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.CookiePolicy;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Abstractions;
-using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.IdentityModel.Tokens;
+using Newtonsoft.Json;
 using snapnow.DAOS;
 using snapnow.DTOS;
 using snapnow.ErrorHandling;
@@ -74,39 +76,10 @@ public class UserServiceJwtCookie : IUserService
             addUserResponse.IsSuccess = false;
             return addUserResponse;
         }
-        
-        var roleResponse = await _roleDao.GetBy(userModel.Role);
-        if (!roleResponse.IsSuccess)
-        {
-            roleResponse.Message += " // User was added to db.";
-            return roleResponse;
-        }
-        
-        var defaultUser = roleResponse.Result;
-        if (defaultUser == null)
-        {
-            roleResponse.Message = "User was added to database. // User was not assigned to a role";
-            return roleResponse;
-        }
-        
-        var addToRoleResponse = await _userDao.AddUserToRole(identityUser, defaultUser.Name);
-        if (!addToRoleResponse.IsSuccess)
-        {
-            addToRoleResponse.Message =
-                "User was added to database. // User was not assigned to a role. // Could not connect to database.";
-            return addToRoleResponse;
-        }
 
-        if (!addToRoleResponse.Result!.Succeeded)
-        {
-            addToRoleResponse.Message =
-                "User was added to database. // User was not assigned to a role. // Could not connect to database.";
-            addToRoleResponse.IsSuccess = true;
-            return addToRoleResponse;
-        }
-        
+        await AddUserToRole(identityUser, userModel.Role);
+
         // if everything ok, create email confirmation token
-        
         var emailConfirmationLinkResponse = await GetEmailConfirmationLink(identityUser, urlHelper);
         if (!emailConfirmationLinkResponse.IsSuccess)
         {
@@ -131,7 +104,7 @@ public class UserServiceJwtCookie : IUserService
         if (string.IsNullOrEmpty(sendEmailConfirmationResponse.Token))
         {
             sendEmailConfirmationResponse.Message =
-                "Could not send email confirmation link. // User was registered successfully. / User was added to a role.";
+                "Could not send email confirmation link. // User was registered successfully.";
             sendEmailConfirmationResponse.IsSuccess = false;
             return sendEmailConfirmationResponse;
         }
@@ -191,25 +164,7 @@ public class UserServiceJwtCookie : IUserService
         }
         
         // if everything is ok the user is signed in
-
-        var claims = new[]
-        {
-            new Claim(ClaimTypes.Email, userModel.Email),
-            new Claim(ClaimTypes.Role, userRoles)
-        };
-
-        
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["AuthSettings:Key"]!));
-
-        var token = new JwtSecurityToken(
-            issuer: _configuration["AuthSettings:Issuer"],
-            audience: _configuration["AuthSettings:Audience"],
-            claims: claims,
-            expires: DateTime.Now.AddDays(10),
-            signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256)
-        );
-
-        string tokenAsString = new JwtSecurityTokenHandler().WriteToken(token);
+        string tokenAsString = generateJwtToken(userModel.Email, userRoles);
 
         var cookieOptions = new CookieOptions
         {
@@ -230,7 +185,110 @@ public class UserServiceJwtCookie : IUserService
             IsSuccess = true,
             StatusCode = userCanSignInResponse.StatusCode,
             Errors = userCanSignInResponse.Errors,
-            ExpireDate = token.ValidTo,
+            Token = tokenAsString
+        };
+    }
+
+    public async Task<IBaseResponse> GoogleAuthentication(string accessToken)
+    {
+        // ask google server for user info using the access token.
+        UserInfoGoogleModel userProfile;
+        
+        using (var client = new HttpClient())
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            var response =
+                await client.GetAsync("https://people.googleapis.com/v1/people/me?personFields=names,emailAddresses");
+            if (!response.IsSuccessStatusCode)
+            {
+                return new UserResponseModel
+                {
+                    Message = "The google Uri or access token is invalid.",
+                    StatusCode = (int)response.StatusCode,
+                    IsSuccess = false
+                };
+            }
+
+            var content = await response.Content.ReadAsStringAsync();
+            userProfile = JsonConvert.DeserializeObject<UserInfoGoogleModel>(content)!;
+        }
+        // check if the user already exists in the database.
+        var userEmail = userProfile.EmailAddresses[0].Value;
+        var userExistsResponse = await _userDao.GetByNameIdentifier(userEmail);
+
+        if (!userExistsResponse.IsSuccess)
+        {
+            return userExistsResponse;
+        }
+        ApplicationUser? user = userExistsResponse.Result;
+        
+        // if user don't exists in the database, register the user without specifying a password and also save to userlogins table;
+        if (user == null)
+        {
+            user = new ApplicationUser
+            {
+                Email = userEmail,
+                UserName = userEmail
+            };
+            var addUserResponse = await _userDao.Add(user);
+
+            if (!addUserResponse.IsSuccess)
+            {
+                return addUserResponse;
+            }
+
+            if (!addUserResponse.Result!.Succeeded)
+            {
+                addUserResponse.Message = "User could not be registered.";
+                addUserResponse.IsSuccess = false;
+                return addUserResponse;
+            }
+            var loginInfo = new UserLoginInfo("Google", "", "Google");
+            var addUserLoginResponse = await _userDao.AddUserLogin(user, loginInfo);
+            if (!addUserLoginResponse.IsSuccess)
+            {
+                addUserLoginResponse.Message =
+                    "User was added to the database. // Could not add login provider to 'UserLogin' table.";
+                return addUserLoginResponse;
+            }
+
+            if (!addUserLoginResponse.Result!.Succeeded)
+            {
+                addUserLoginResponse.Message +=
+                    "User was added to the database. // Could not add login provider to 'UserLogin' table. // The Jwt token will nto be created.";
+                addUserLoginResponse.IsSuccess = false;
+                return addUserLoginResponse;
+            }
+
+            await AddUserToRole(user, "User");
+        }
+        var userRolesResponse = await _userDao.GetRolesForUser(user);
+        if (!userRolesResponse.IsSuccess)
+            return userRolesResponse;
+        
+        var userRoles = String.Join(",", userRolesResponse.Result!);
+
+        // create a jwt token for the user
+        var tokenAsString = generateJwtToken(user.Email, userRoles);
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = false,
+            SameSite = SameSiteMode.None,
+            Expires = DateTimeOffset.UtcNow.AddDays(10),
+            IsEssential = true,
+            Secure = false,
+            Domain = "127.0.0.1:5500"
+        };
+        
+        // use HttpContext to save it into the cookies
+        _httpContextAccessor.HttpContext!.Response.Cookies.Append("Token", tokenAsString, cookieOptions);
+        
+        // return the response to the controller
+        return new UserResponseModel
+        {
+            Message = "Cookie was set.",
+            IsSuccess = true,
+            StatusCode = 200,
             Token = tokenAsString
         };
     }
@@ -263,6 +321,63 @@ public class UserServiceJwtCookie : IUserService
         }
 
         return userResponse;
+    }
+
+    public async Task<IBaseResponse> AddUserToRole(ApplicationUser user, string role)
+    {
+        var roleResponse = await _roleDao.GetBy(role);
+        if (!roleResponse.IsSuccess)
+        {
+            roleResponse.Message += " // User was added to db.";
+            return roleResponse;
+        }
+        
+        var defaultUser = roleResponse.Result;
+        if (defaultUser == null)
+        {
+            roleResponse.Message = "User was added to database. // User was not assigned to a role";
+            return roleResponse;
+        }
+
+        var addToRoleResponse = await _userDao.AddUserToRole(user, defaultUser.Name);
+        if (!addToRoleResponse.IsSuccess)
+        {
+            addToRoleResponse.Message =
+                "User was added to database. // User was not assigned to a role. // Could not connect to database.";
+            return addToRoleResponse;
+        }
+
+        if (!addToRoleResponse.Result!.Succeeded)
+        {
+            addToRoleResponse.Message =
+                "User was added to database. // User was not assigned to a role. // Could not connect to database.";
+            addToRoleResponse.IsSuccess = true;
+            return addToRoleResponse;
+        }
+
+        return addToRoleResponse;
+    }
+    
+    private string generateJwtToken(string email, string roles)
+    {
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.Email, email),
+            new Claim(ClaimTypes.Role, roles)
+        };
+
+        
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["AuthSettings:Key"]!));
+
+        var token = new JwtSecurityToken(
+            issuer: _configuration["AuthSettings:Issuer"],
+            audience: _configuration["AuthSettings:Audience"],
+            claims: claims,
+            expires: DateTime.Now.AddDays(10),
+            signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256)
+        );
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
     
     private async Task<DatabaseResponseModel<string>> GetEmailConfirmationLink(ApplicationUser user, IUrlHelper urlHelper) 

@@ -1,5 +1,14 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using System.Net.Http.Headers;
+using Azure.Core;
+using Google.Apis.Auth;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 using snapnow.DTOS;
 using snapnow.Models;
 using snapnow.Services;
@@ -11,13 +20,11 @@ namespace snapnow.Controllers;
 public class AuthenticationController : ControllerBase
 {
     private readonly IUserService _userService;
-    private readonly IMailService _mailService;
-
-
-    public AuthenticationController(IUserService userService, IMailService mailService)
+    private readonly IConfiguration _configuration;
+    public AuthenticationController(IUserService userService, IConfiguration configuration)
     {
         _userService = userService;
-        _mailService = mailService;
+        _configuration = configuration;
     }
     
     [HttpPost("register")]
@@ -92,5 +99,47 @@ public class AuthenticationController : ControllerBase
             );
         }
         return Ok(confirmEmailResponse);
+    }
+    
+    [HttpPost("google")]
+    public async Task<IActionResult> AuthenticateWithGoogle([FromBody] AccessTokenModel userAuthorizationResponse)
+    {
+        var accessToken = userAuthorizationResponse.AccessToken;
+
+        if (accessToken == null)
+        {
+            return BadRequest("Access token is missing.");
+        }
+        
+        var googleAuthenticationResponse = await _userService.GoogleAuthentication(accessToken);
+
+        if (googleAuthenticationResponse.IsSuccess)
+        {
+            return Ok(googleAuthenticationResponse);
+        }
+
+        return Problem(
+            title: googleAuthenticationResponse.Message,
+            detail: googleAuthenticationResponse.Errors != null
+                ? String.Join("/n", googleAuthenticationResponse.Errors)
+                : "",
+            statusCode: googleAuthenticationResponse.StatusCode
+        );
+        /*using (var client = new HttpClient())
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+            var response =
+                await client.GetAsync("https://people.googleapis.com/v1/people/me?personFields=names,emailAddresses");
+            if (!response.IsSuccessStatusCode)
+            {
+                return BadRequest();
+            }
+
+            var content = await response.Content.ReadAsStringAsync();
+            var userProfile = JsonConvert.DeserializeObject<UserInfoGoogleModel>(content);
+
+            return Ok(userProfile);
+        }*/
     }
 }

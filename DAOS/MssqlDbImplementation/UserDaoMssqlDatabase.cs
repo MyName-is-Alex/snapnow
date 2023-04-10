@@ -1,6 +1,4 @@
 ﻿using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore.Storage;
-using snapnow.Data;
 using snapnow.ErrorHandling;
 using snapnow.Models;
 
@@ -9,20 +7,25 @@ namespace snapnow.DAOS.MssqlDbImplementation;
 public class UserDaoMssqlDatabase : IUserDao
 {
     private readonly UserManager<ApplicationUser> _userManager;
-    private readonly ApplicationDbContext _dbContext;
 
-    public UserDaoMssqlDatabase(UserManager<ApplicationUser> userManager, ApplicationDbContext dbContext)
+    public UserDaoMssqlDatabase(UserManager<ApplicationUser> userManager)
     {
         _userManager = userManager;
-        _dbContext = dbContext;
     }
 
-    public async Task<DatabaseResponseModel<IdentityResult>> Add(ApplicationUser applicationUser, string password)
+    public async Task<DatabaseResponseModel<IdentityResult>> Add(ApplicationUser applicationUser, string password = "")
     {
         IdentityResult result;
         try
         {
-            result = await _userManager.CreateAsync(applicationUser, password);
+            if (password.Length < 1)
+            {
+                result = await _userManager.CreateAsync(applicationUser);
+            }
+            else
+            {
+                result = await _userManager.CreateAsync(applicationUser, password);
+            }
         }
         catch (Exception exception)
         {
@@ -69,7 +72,7 @@ public class UserDaoMssqlDatabase : IUserDao
             Message = "Connection to database was successful.",
             Errors = new List<string>{identityUser == null ? "Could not find user." : ""},
             IsSuccess = true,
-            Result = identityUser ?? identityUser,
+            Result = identityUser,
             StatusCode = identityUser != null ? 200 : 422
         };
     }
@@ -295,6 +298,34 @@ public class UserDaoMssqlDatabase : IUserDao
                 IsSuccess = false,
                 Errors = new List<string> { exception.Message },
                 StatusCode = 500
+            };
+        }
+
+        return new DatabaseResponseModel<IdentityResult>
+        {
+            Message = "Connection to database was successful.",
+            IsSuccess = true,
+            StatusCode = result.Succeeded ? 200 : 422,
+            Result = result,
+            Errors = result.Errors.Select(x => x.Description)
+        };
+    }
+
+    public async Task<DatabaseResponseModel<IdentityResult>> AddUserLogin(ApplicationUser userId, UserLoginInfo loginInfo)
+    {
+        IdentityResult result;
+        try
+        {
+            result = await _userManager.AddLoginAsync(userId, loginInfo);
+        }
+        catch (Exception exception)
+        {
+            return new DatabaseResponseModel<IdentityResult>
+            {
+                Message = "Database exception.",
+                IsSuccess = false,
+                StatusCode = 500,
+                Errors = new List<string>{exception.Message}
             };
         }
 

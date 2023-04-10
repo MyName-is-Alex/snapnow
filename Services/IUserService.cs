@@ -14,4 +14,5 @@ public interface IUserService
     public IBaseResponse Logout();
     public Task<DatabaseResponseModel<ApplicationUser>> GetUserById(string userId);
     public Task<IBaseResponse> ConfirmUserEmail(string user, string token);
+    public Task<IBaseResponse> GoogleAuthentication(string accessToken);
 }
