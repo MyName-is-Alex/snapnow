@@ -1,8 +1,9 @@
-﻿using snapnow.Models;
+﻿using snapnow.ErrorHandling;
+using snapnow.Models;
 
 namespace snapnow.Services;
 
 public interface IMailService
 {
-    public Task SendEmailAsync(MailRequest mailRequest);
+    public Task<UserResponseModel> SendEmailAsync(MailRequest mailRequest);
 }

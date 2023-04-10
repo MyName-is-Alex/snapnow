@@ -10,6 +10,7 @@ using snapnow.DAOS;
 using snapnow.DTOS;
 using snapnow.ErrorHandling;
 using snapnow.Models;
+using snapnow.Utils;
 
 
 namespace snapnow.Services;
@@ -20,14 +21,16 @@ public class UserServiceJwtCookie : IUserService
     private readonly RoleService _roleDao;
     private readonly IConfiguration _configuration;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IMailService _mailService;
 
     public UserServiceJwtCookie(IUserDao userDao, RoleService roleDao, IConfiguration configuration, 
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor, IMailService mailService)
     {
         _userDao = userDao;
         _roleDao = roleDao;
         _configuration = configuration;
         _httpContextAccessor = httpContextAccessor;
+        _mailService = mailService;
     }
 
     public async Task<IBaseResponse> RegisterUser(RegisterUserModel userModel, IUrlHelper urlHelper)
@@ -74,7 +77,10 @@ public class UserServiceJwtCookie : IUserService
         
         var roleResponse = await _roleDao.GetBy(userModel.Role);
         if (!roleResponse.IsSuccess)
+        {
+            roleResponse.Message += " // User was added to db.";
             return roleResponse;
+        }
         
         var defaultUser = roleResponse.Result;
         if (defaultUser == null)
@@ -95,7 +101,7 @@ public class UserServiceJwtCookie : IUserService
         {
             addToRoleResponse.Message =
                 "User was added to database. // User was not assigned to a role. // Could not connect to database.";
-            addToRoleResponse.IsSuccess = false;
+            addToRoleResponse.IsSuccess = true;
             return addToRoleResponse;
         }
         
@@ -107,6 +113,27 @@ public class UserServiceJwtCookie : IUserService
             emailConfirmationLinkResponse.Message +=
                 " // User was added to database.";
             return emailConfirmationLinkResponse;
+        }
+
+        var mailRequest = new MailRequest
+        {
+            ToEmail = identityUser.Email,
+            Subject = "Confirm your email - snapnow.",
+            Body = EmailBody.GetEmailConfirmationBody(identityUser.Email, emailConfirmationLinkResponse.Result!),
+        };
+        var sendEmailConfirmationResponse = await _mailService.SendEmailAsync(mailRequest);
+        if (!sendEmailConfirmationResponse.IsSuccess)
+        {
+            sendEmailConfirmationResponse.Message += " // User was added to the database.";
+            return sendEmailConfirmationResponse;
+        }
+
+        if (string.IsNullOrEmpty(sendEmailConfirmationResponse.Token))
+        {
+            sendEmailConfirmationResponse.Message =
+                "Could not send email confirmation link. // User was registered successfully. / User was added to a role.";
+            sendEmailConfirmationResponse.IsSuccess = false;
+            return sendEmailConfirmationResponse;
         }
 
         return new UserResponseModel

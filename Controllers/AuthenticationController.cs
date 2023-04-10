@@ -91,7 +91,6 @@ public class AuthenticationController : ControllerBase
                 statusCode: confirmEmailResponse.StatusCode
             );
         }
-        
         return Ok(confirmEmailResponse);
     }
 }

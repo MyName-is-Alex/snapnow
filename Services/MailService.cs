@@ -2,6 +2,7 @@
 using MailKit.Security;
 using Microsoft.Extensions.Options;
 using MimeKit;
+using snapnow.ErrorHandling;
 using snapnow.Models;
 
 namespace snapnow.Services;
@@ -14,7 +15,7 @@ public class MailService : IMailService
         _mailSettings = mailSettings.Value;
     }
 
-    public async Task SendEmailAsync(MailRequest mailRequest)
+    public async Task<UserResponseModel> SendEmailAsync(MailRequest mailRequest)
     {
         var email = new MimeMessage();
         email.Sender = MailboxAddress.Parse(_mailSettings.Mail);
@@ -42,10 +43,33 @@ public class MailService : IMailService
 
         builder.HtmlBody = mailRequest.Body;
         email.Body = builder.ToMessageBody();
-        using var smtp = new SmtpClient();
-        smtp.Connect(_mailSettings.Host, _mailSettings.Port, SecureSocketOptions.StartTls);
-        smtp.Authenticate(_mailSettings.Mail, _mailSettings.Password);
-        await smtp.SendAsync(email);
-        smtp.Disconnect(true);
+
+        try
+        {
+            using var smtp = new SmtpClient();
+            smtp.Connect(_mailSettings.Host, _mailSettings.Port, SecureSocketOptions.StartTls);
+            smtp.Authenticate(_mailSettings.Mail, _mailSettings.Password);
+            var emailResponse = await smtp.SendAsync(email);
+            smtp.Disconnect(true);
+            
+            return new UserResponseModel
+            {
+                Message = "Email was sent",
+                IsSuccess = true,
+                StatusCode = 200,
+                Token = emailResponse,
+                ExpireDate = DateTime.Now.AddDays(90)
+            };
+        }
+        catch (Exception exception)
+        {
+            return new UserResponseModel
+            {
+                Message = "Email was not sent",
+                IsSuccess = true,
+                StatusCode = 500,
+                Errors = new List<string>{exception.Message}
+            };
+        }
     }
 }
