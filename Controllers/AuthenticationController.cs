@@ -1,14 +1,5 @@
-﻿using System.Net.Http.Headers;
-using Azure.Core;
-using Google.Apis.Auth;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Google;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Serialization;
 using snapnow.DTOS;
 using snapnow.Models;
 using snapnow.Services;
@@ -125,21 +116,5 @@ public class AuthenticationController : ControllerBase
                 : "",
             statusCode: googleAuthenticationResponse.StatusCode
         );
-        /*using (var client = new HttpClient())
-        {
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
-            var response =
-                await client.GetAsync("https://people.googleapis.com/v1/people/me?personFields=names,emailAddresses");
-            if (!response.IsSuccessStatusCode)
-            {
-                return BadRequest();
-            }
-
-            var content = await response.Content.ReadAsStringAsync();
-            var userProfile = JsonConvert.DeserializeObject<UserInfoGoogleModel>(content);
-
-            return Ok(userProfile);
-        }*/
     }
 }

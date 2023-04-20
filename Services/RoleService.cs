@@ -41,14 +41,17 @@ public class RoleService : IBaseService<IdentityRole, RoleModel, IdentityResult>
     public async Task<DatabaseResponseModel<IdentityRole>> GetBy(string roleName)
     {
         var result = await _roleDao.GetByNameIdentifier(roleName);
-        result.Message = result.IsSuccess ? "Role was find." : "Could not find role.";
+        result.Message = result.IsSuccess ? "Role was found." : "Could not find role";
 
         return result;
     }
 
-    public DatabaseResponseModel<IdentityRole> GetAll()
+    public DatabaseResponseModel<List<IdentityRole>> GetAll()
     {
-        throw new NotImplementedException();
+        var result = _roleDao.GetAll();
+        result.Message = result.IsSuccess ? "Role was found." : "Could not find role";
+
+        return result;
     }
     public DatabaseResponseModel<IdentityRole> Delete(RoleModel role)
     {

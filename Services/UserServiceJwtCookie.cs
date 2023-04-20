@@ -277,7 +277,7 @@ public class UserServiceJwtCookie : IUserService
             Expires = DateTimeOffset.UtcNow.AddDays(10),
             IsEssential = true,
             Secure = false,
-            Domain = "127.0.0.1:5500"
+            Domain = "localhost"
         };
         
         // use HttpContext to save it into the cookies

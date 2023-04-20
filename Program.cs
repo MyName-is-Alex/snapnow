@@ -23,7 +23,7 @@ var myAllowSpecificOrigins = "MyAllowSpecificOrigins";
 builder.Services.AddCors(cors => {
     cors.AddPolicy(name: myAllowSpecificOrigins, policy =>
     {
-        policy.WithOrigins("http://127.0.0.1:8080", "http://127.0.0.1:5500", "127.0.0.1:5500", "127.0.0.1:8080").AllowCredentials().AllowAnyHeader().AllowAnyMethod();
+        policy.WithOrigins("http://localhost:8080").AllowCredentials().AllowAnyHeader().AllowAnyMethod();
     });
 });
 
@@ -135,8 +135,7 @@ app.UseHttpsRedirection();
 
 app.UseCors(opt =>
 {
-    opt.AllowAnyHeader().AllowAnyMethod().AllowCredentials().WithOrigins("http://127.0.0.1:8080",
-        "http://127.0.0.1:5500", "127.0.0.1:5500", "127.0.0.1:8080");
+    opt.AllowAnyHeader().AllowAnyMethod().AllowCredentials().WithOrigins("http://localhost:8080");
 });
 
 app.UseAuthentication();

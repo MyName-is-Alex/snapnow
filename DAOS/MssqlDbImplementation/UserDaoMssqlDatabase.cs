@@ -105,7 +105,7 @@ public class UserDaoMssqlDatabase : IUserDao
         };
     }
     
-    public DatabaseResponseModel<ApplicationUser> GetAll()
+    public DatabaseResponseModel<List<ApplicationUser>> GetAll()
     {
         throw new NotImplementedException();
     }

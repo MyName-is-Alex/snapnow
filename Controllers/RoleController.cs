@@ -33,6 +33,22 @@ public class RoleController : ControllerBase
         ); 
     }
 
+    [AllowAnonymous]
+    [HttpGet("list-roles")]
+    public async Task<IActionResult> GetAllRoles()
+    {
+        var response = _roleService.GetAll();
+        if (response.IsSuccess)
+        {
+            return Ok(response);
+        }
+
+        return Problem(statusCode: response.StatusCode,
+            title: response.Message,
+            detail: response.Errors != null ? String.Join("/n", response.Errors) : "");
+    }
+    
+    [AllowAnonymous]
     [HttpGet("test")]
     public IActionResult Test()
     {

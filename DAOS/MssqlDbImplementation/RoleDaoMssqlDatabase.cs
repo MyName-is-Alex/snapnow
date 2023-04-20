@@ -72,9 +72,31 @@ public class RoleDaoMssqlDatabase : IRoleDao
         };
     }
 
-    public DatabaseResponseModel<IdentityRole> GetAll()
+    public DatabaseResponseModel<List<IdentityRole>> GetAll()
     {
-        throw new NotImplementedException(); 
+        List<IdentityRole> roles = new List<IdentityRole>();
+        try
+        {
+            roles = _roleManager.Roles.ToList();
+        }
+        catch (Exception exception)
+        {
+            return new DatabaseResponseModel<List<IdentityRole>>
+            {
+                Message = "Database exception.",
+                IsSuccess = false,
+                StatusCode = 500,
+                Errors = new List<string>{exception.Message}
+            };
+        }
+
+        return new DatabaseResponseModel<List<IdentityRole>>
+        {
+            Message = "Connection to database was successful.",
+            IsSuccess = true,
+            StatusCode = 200,
+            Result = roles
+        };
     }
 
     public DatabaseResponseModel<IdentityRole> Delete(IdentityRole item)
