@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using snapnow.ErrorHandling;
 using snapnow.Models;
+using snapnow.Utils;
 
 namespace snapnow.DAOS.MssqlDbImplementation;
 
@@ -103,6 +104,43 @@ public class UserDaoMssqlDatabase : IUserDao
             StatusCode = user != null ? 200 : 422,
             Errors = new List<string>{user == null ? "There is no user with this ID." : ""}
         };
+    }
+
+    public async Task<DatabaseResponseModel<List<ApplicationUser>>> GetFollowedUsers(string currentUserEmail)
+    {
+        List<ApplicationUser> result;
+
+        try
+        {
+            result = new List<ApplicationUser>();
+            
+            var followedIds = _userManager.GetCompleteUsers().Single(x => x.Email == currentUserEmail).Followeds
+                .Select(x => x.FollowedId);
+            foreach (var userId in followedIds)
+            {
+                var user = await _userManager.FindByIdAsync(userId);
+                result.Add(user);
+            }
+        }
+        catch (Exception exception)
+        {
+            return new DatabaseResponseModel<List<ApplicationUser>>
+            {
+                Message = "Database exception.",
+                IsSuccess = false,
+                StatusCode = 500,
+                Errors = new List<string>{exception.Message}
+            };
+        }
+
+        return new DatabaseResponseModel<List<ApplicationUser>>
+        {
+            Message = "Connection to database was successful.",
+            IsSuccess = true,
+            Result = result,
+            StatusCode = 200
+        };
+
     }
     
     public DatabaseResponseModel<List<ApplicationUser>> GetAll()

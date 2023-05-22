@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +34,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IRoleDao, RoleDaoMssqlDatabase>();
 builder.Services.AddScoped<IUserDao, UserDaoMssqlDatabase>();
 builder.Services.AddScoped<IUserService, UserServiceJwtCookie>();
+builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddScoped<RoleService>();
 builder.Services.AddTransient<IMailService, MailService>();
 

@@ -11,11 +11,10 @@ namespace snapnow.Controllers;
 public class AuthenticationController : ControllerBase
 {
     private readonly IUserService _userService;
-    private readonly IConfiguration _configuration;
-    public AuthenticationController(IUserService userService, IConfiguration configuration)
+    public AuthenticationController(IUserService userService)
     {
         _userService = userService;
-        _configuration = configuration;
+       
     }
     
     [HttpPost("register")]

@@ -48,7 +48,6 @@ public class RoleController : ControllerBase
             detail: response.Errors != null ? String.Join("/n", response.Errors) : "");
     }
     
-    [AllowAnonymous]
     [HttpGet("test")]
     public IActionResult Test()
     {
