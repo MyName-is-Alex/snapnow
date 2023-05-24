@@ -16,7 +16,7 @@ public class ChatController : ControllerBase
         _chatService = userService;
     }
 
-    [HttpPost("get-followed-users")]
+    [HttpGet("get-followed-users")]
     public async Task<IActionResult> GetFollowedUsers()
     {
         var userName = HttpContext.User.FindFirst(ClaimTypes.Email)?.Value;

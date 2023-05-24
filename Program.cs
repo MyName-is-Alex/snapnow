@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +7,7 @@ using Microsoft.OpenApi.Models;
 using snapnow.DAOS;
 using snapnow.DAOS.MssqlDbImplementation;
 using snapnow.Data;
+using snapnow.Hubs;
 using snapnow.Models;
 using snapnow.Services;
 
@@ -124,6 +124,13 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+builder.Services.AddSignalR(options =>
+{
+    options.HandshakeTimeout = TimeSpan.FromMinutes(30);
+});
+
+builder.Services.AddSingleton<IDictionary<string, UserConnection>>(opts => new Dictionary<string, UserConnection>());
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -142,8 +149,15 @@ app.UseCors(opt =>
 
 app.UseAuthentication();
 
+app.UseRouting();
+
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.UseEndpoints(endpoints =>
+{
+    endpoints.MapHub<ChatHub>("/chat");
+});
 
 app.Run();
