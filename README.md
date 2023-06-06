@@ -1,3 +1,5 @@
+# WORK IN PROGRESS
+
 # Snapnow - Social App with Encrypted Messages
 SnapNow combines the best features of Snapchat and BeReal while prioritizing user privacy and security.
 
