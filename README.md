@@ -55,3 +55,13 @@ If you would like to contribute to SnapNow, please fork the repository and submi
 ## Contact
 
 If you have any questions or suggestions about SnapNow, feel free to contact me at mitualex12@yahoo.com.
+
+## Preview
+### Chat
+![Chat](https://github.com/MyName-is-Alex/snapnow-backend/assets/84578854/4864f615-7883-441d-8746-a1eb91e85aab)
+### Camera 
+![Cammera](https://github.com/MyName-is-Alex/snapnow-backend/assets/84578854/08f1e2f9-f998-4333-8045-781c67442096)
+### Map 
+![Map](https://github.com/MyName-is-Alex/snapnow-backend/assets/84578854/9d8f0703-79fd-4443-a1c8-1252496780d8)
+### Social
+![Social](https://github.com/MyName-is-Alex/snapnow-backend/assets/84578854/92ff4304-d491-47b5-b1e4-70a205dd7af9)
